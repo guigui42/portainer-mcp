@@ -1,9 +1,14 @@
 package client
 
 import (
+	"crypto/tls"
 	"net/http"
 
+	"github.com/go-openapi/runtime"
+	httptransport "github.com/go-openapi/runtime/client"
+	"github.com/go-openapi/strfmt"
 	"github.com/portainer/client-api-go/v2/client"
+	clientpkg "github.com/portainer/client-api-go/v2/pkg/client"
 	apimodels "github.com/portainer/client-api-go/v2/pkg/models"
 )
 
@@ -43,7 +48,10 @@ type PortainerAPIClient interface {
 // PortainerClient is a wrapper around the Portainer SDK client
 // that provides simplified access to Portainer API functionality.
 type PortainerClient struct {
-	cli PortainerAPIClient
+	cli      PortainerAPIClient // The edge stack client
+	rawCli   *clientpkg.PortainerClientAPI  // Direct access to the raw client API for regular stacks
+	serverURL string
+	token    string
 }
 
 // ClientOption defines a function that configures a PortainerClient.
@@ -81,7 +89,50 @@ func NewPortainerClient(serverURL string, token string, opts ...ClientOption) *P
 		opt(&options)
 	}
 
+	rawClient := client.NewPortainerClient(serverURL, token, client.WithSkipTLSVerify(options.skipTLSVerify))
+	
+	// Also create a raw client API for direct access to stacks API
+	var rawAPIClient *clientpkg.PortainerClientAPI
+	if rawClient != nil {
+		// Parse serverURL to extract host and scheme
+		var host string
+		var scheme string
+		if serverURL[:8] == "https://" {
+			scheme = "https"
+			host = serverURL[8:]  // Remove https://
+		} else if serverURL[:7] == "http://" {
+			scheme = "http"
+			host = serverURL[7:]  // Remove http://
+		} else {
+			// Default to https if no scheme provided
+			scheme = "https"
+			host = serverURL
+		}
+
+		transport := httptransport.New(host, "/api", []string{scheme})
+
+		// Configure TLS if needed
+		if options.skipTLSVerify {
+			transport.Transport = &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			}
+		}
+
+		// Configure API key authentication
+		apiKeyAuth := runtime.ClientAuthInfoWriterFunc(func(r runtime.ClientRequest, _ strfmt.Registry) error {
+			return r.SetHeaderParam("x-api-key", token)
+		})
+		transport.DefaultAuthentication = apiKeyAuth
+
+		rawAPIClient = clientpkg.New(transport, nil)
+	}
+
 	return &PortainerClient{
-		cli: client.NewPortainerClient(serverURL, token, client.WithSkipTLSVerify(options.skipTLSVerify)),
+		cli:      rawClient,
+		rawCli:   rawAPIClient,
+		serverURL: serverURL,
+		token:    token,
 	}
 }
