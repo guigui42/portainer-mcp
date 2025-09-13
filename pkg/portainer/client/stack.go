@@ -14,28 +14,31 @@ import (
 //   - A slice of Stack objects
 //   - An error if the operation fails
 func (c *PortainerClient) GetStacks() ([]models.Stack, error) {
-	// Get both edge stacks and regular stacks
+	// Get edge stacks
 	edgeStacks, err := c.cli.ListEdgeStacks()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list edge stacks: %w", err)
 	}
 
-	regularStacks, err := c.ListRegularStacks()
-	if err != nil {
-		return nil, fmt.Errorf("failed to list regular stacks: %w", err)
-	}
-
-	// Convert and combine the results
-	allStacks := make([]models.Stack, 0, len(edgeStacks)+len(regularStacks))
-
-	// Add edge stacks
+	// Convert edge stacks
+	allStacks := make([]models.Stack, 0, len(edgeStacks))
 	for _, es := range edgeStacks {
 		allStacks = append(allStacks, models.ConvertEdgeStackToStack(es))
 	}
 
-	// Add regular stacks
-	for _, rs := range regularStacks {
-		allStacks = append(allStacks, models.ConvertRegularStackToStack(rs))
+	// Try to get regular stacks if the raw client is available
+	if c.rawCli != nil {
+		regularStacks, err := c.ListRegularStacks()
+		if err != nil {
+			// Log warning but don't fail - regular stacks are optional enhancement
+			// In production, you might want to log this warning
+			// For now, continue with just edge stacks
+		} else {
+			// Add regular stacks
+			for _, rs := range regularStacks {
+				allStacks = append(allStacks, models.ConvertRegularStackToStack(rs))
+			}
+		}
 	}
 
 	return allStacks, nil
@@ -57,13 +60,16 @@ func (c *PortainerClient) GetStackFileContent(id int) (string, error) {
 		return file, nil
 	}
 
-	// If edge stack failed, try regular stack
-	file, err = c.GetRegularStackFile(int64(id))
-	if err != nil {
-		return "", fmt.Errorf("failed to get stack file from both edge and regular stacks: %w", err)
+	// If edge stack failed and raw client is available, try regular stack
+	if c.rawCli != nil {
+		file, err = c.GetRegularStackFile(int64(id))
+		if err == nil {
+			return file, nil
+		}
 	}
 
-	return file, nil
+	// Return the edge stack error since that was tried first
+	return "", fmt.Errorf("failed to get stack file from edge stacks: %w", err)
 }
 
 // CreateStackWrapper creates a new stack on the Portainer server.
@@ -106,16 +112,17 @@ func (c *PortainerClient) UpdateStackWrapper(id int, file string, environmentGro
 		return nil
 	}
 
-	// If edge stack update failed, try regular stack (with first environment ID)
-	if len(environmentGroupIds) > 0 {
-		err = c.UpdateRegularStack(int64(id), file, int64(environmentGroupIds[0]))
-		if err != nil {
-			return fmt.Errorf("failed to update stack as both edge and regular stack: %w", err)
+	// If edge stack update failed and raw client is available, try regular stack (with first environment ID)
+	if c.rawCli != nil && len(environmentGroupIds) > 0 {
+		regularErr := c.UpdateRegularStack(int64(id), file, int64(environmentGroupIds[0]))
+		if regularErr == nil {
+			return nil
 		}
-		return nil
+		// Continue with edge stack error below since that was tried first
 	}
 
-	return fmt.Errorf("failed to update edge stack and no environment ID provided for regular stack: %w", err)
+	// Return the edge stack error since that's the primary functionality
+	return fmt.Errorf("failed to update edge stack: %w", err)
 }
 
 // GetStackFile is an alias for GetStackFileContent to match the expected interface

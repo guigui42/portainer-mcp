@@ -368,10 +368,10 @@ tools:
       destructiveHint: false
       idempotentHint: true
       openWorldHint: false
-  ## Stacks
+  ## Stacks (Edge Stacks and Regular Stacks)
   ## ------------------------------------------------------------
   - name: listStacks
-    description: List all available stacks
+    description: List all available Portainer stacks (includes both Edge Stacks and regular Stacks)
     annotations:
       title: List Stacks
       readOnlyHint: true
@@ -379,7 +379,7 @@ tools:
       idempotentHint: true
       openWorldHint: false
   - name: getStackFile
-    description: Get the compose file for a specific stack ID
+    description: Get the compose file for a specific Portainer stack ID (works with both Edge Stacks and regular Stacks)
     parameters:
       - name: id
         description: The ID of the stack to get the compose file for
@@ -392,7 +392,7 @@ tools:
       idempotentHint: true
       openWorldHint: false
   - name: createStack
-    description: Create a new stack
+    description: Create a new Portainer stack (creates an Edge Stack that can be deployed to multiple environment groups)
     parameters:
       - name: name
         description: Name of the stack. Stack name must only consist of lowercase alpha
@@ -409,7 +409,7 @@ tools:
         type: string
         required: true
       - name: environmentGroupIds
-        description: "The IDs of the environment groups that the stack belongs to. Must
+        description: "The IDs of the environment groups that the Edge Stack belongs to. Must
           include at least one environment group ID. Example: [1, 2, 3]"
         type: array
         required: true
@@ -422,7 +422,7 @@ tools:
       idempotentHint: false
       openWorldHint: false
   - name: updateStack
-    description: Update an existing stack
+    description: Update an existing Portainer stack (works with both Edge Stacks and regular Stacks)
     parameters:
       - name: id
         description: The ID of the stack to update
@@ -438,8 +438,10 @@ tools:
         type: string
         required: true
       - name: environmentGroupIds
-        description: "The IDs of the environment groups that the stack belongs to. Must
-          include at least one environment group ID. Example: [1, 2, 3]"
+        description: "The IDs of the environment groups for Edge Stacks, or environments for regular Stacks.
+          For Edge Stacks, must include at least one environment group ID. 
+          For regular Stacks, the first ID will be used as the environment ID.
+          Example: [1, 2, 3]"
         type: array
         required: true
         items:
